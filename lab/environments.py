@@ -496,3 +496,14 @@ class TetralithEnvironment(SlurmEnvironment):
     def is_present(cls):
         node = platform.node()
         return re.match(r"tetralith\d+\.nsc\.liu\.se|n\d+", node)
+
+
+class DEISSlurmEnvironment(SlurmEnvironment):
+    """Environment for DEIS cluster."""
+
+    DEFAULT_PARTITION = "naples"
+    DEFAULT_QOS = "normal"
+    DEFAULT_MEMORY_PER_CPU = "4096M"
+    MAX_TASKS = 1000 - 1  # see slurm.conf
+
+    DEFAULT_EXPORT = []
