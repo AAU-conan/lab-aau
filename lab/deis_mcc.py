@@ -1,7 +1,7 @@
-from environments import SlurmEnvironment
+from lab.environments import SlurmEnvironment
 import platform
 import re
-from compress_step import CompressStep
+from lab.compress_step import CompressStep
 
 class DEISSlurmEnvironment(SlurmEnvironment):
     """Environment for DEIS cluster."""
