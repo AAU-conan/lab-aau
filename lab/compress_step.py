@@ -2,16 +2,13 @@ import shutil
 import tarfile
 from pathlib import Path
 
-import lab.steps
-
-
-class CompressStep (lab.steps.Step):
+class CompressStep:
     def __init__(self, lab_experiment, target_folder, tmp_folder = None):
         self.lab_experiment = lab_experiment
         self.target_folder = target_folder
         self.tmp_folder = tmp_folder
 
-    def step(self):
+    def __call__(self):
         if self.tmp_folder:
             Path(self.tmp_folder).mkdir(parents=True, exist_ok=True)
             output_filename = f"{self.tmp_folder}/{self.lab_experiment.name()}.tar.gz"
