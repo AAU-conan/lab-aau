@@ -1,5 +1,7 @@
 import shutil
 import tarfile
+from pathlib import Path
+
 
 class CompressStep:
     def __init__(self, lab_experiment, target_folder, tmp_folder = None):
@@ -9,6 +11,7 @@ class CompressStep:
 
     def step(self):
         if self.tmp_folder:
+            Path(self.tmp_folder).mkdir(parents=True, exist_ok=True)
             output_filename = f"{self.tmp_folder}/{self.lab_experiment.name()}.tar.gz"
         else:
             output_filename = f"{self.target_folder}/{self.lab_experiment.name()}.tar.gz"
