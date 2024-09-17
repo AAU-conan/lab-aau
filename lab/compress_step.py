@@ -2,8 +2,10 @@ import shutil
 import tarfile
 from pathlib import Path
 
+import lab.steps
 
-class CompressStep:
+
+class CompressStep (lab.steps.Step):
     def __init__(self, lab_experiment, target_folder, tmp_folder = None):
         self.lab_experiment = lab_experiment
         self.target_folder = target_folder
