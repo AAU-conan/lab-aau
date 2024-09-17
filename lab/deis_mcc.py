@@ -29,7 +29,7 @@ class DEISSlurmEnvironment(SlurmEnvironment):
         node = platform.node()
         return re.match(r"a512-ib1-a-\d+", node)
 
-   @classmethod
+    @classmethod
     def is_cluster_dhabi(cls):
         node = platform.node()
         return re.match(r"a512-ib1-a-\d+", node)
