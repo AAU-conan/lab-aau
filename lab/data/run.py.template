@@ -10,6 +10,12 @@ from lab import tools
 tools.configure_logging()
 
 logging.info(f"node: {platform.node()}")
+logging.info(f"username: {os.getlogin()}")
+
+
+for slurm_key in ['SLURM_ARRAY_JOB_ID', 'SLURM_ARRAY_TASK_ID']:
+    if slurm_key in os.environ:
+        logging.info(f"{slurm_key}: {os.environ.get(slurm_key)}")
 
 run_log = open("run.log", "wb")
 run_err = open("run.err", "wb", buffering=0)  # disable buffering
