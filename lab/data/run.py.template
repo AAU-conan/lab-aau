@@ -3,6 +3,7 @@
 import logging
 import os
 import platform
+import getpass
 
 from lab.calls.call import Call
 from lab import tools
@@ -10,7 +11,7 @@ from lab import tools
 tools.configure_logging()
 
 logging.info(f"node: {platform.node()}")
-logging.info(f"username: {os.getlogin()}")
+logging.info(f"username: {getpass.getuser()}")
 
 
 for slurm_key in ['SLURM_ARRAY_JOB_ID', 'SLURM_ARRAY_TASK_ID']:
