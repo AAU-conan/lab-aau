@@ -27,7 +27,7 @@ class DEISSlurmEnvironment(SlurmEnvironment):
     @classmethod
     def is_cluster_naples(cls):
         node = platform.node()
-        return re.match(r"a512-ib1-\d+", node)
+        return re.match(r"a512-ib1-.+-\d+", node)
 
     @classmethod
     def is_cluster_dhabi(cls):
