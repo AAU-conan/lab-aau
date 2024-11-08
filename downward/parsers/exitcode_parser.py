@@ -39,6 +39,7 @@ def parse_exit_code(content, props):
     else:
         props["unsolvable"] = int(
             outcome.msg in ["translate-unsolvable", "search-unsolvable"]
+            or "Completely explored state space -- no solution" in content
         )
     if not outcome.explained:
         props.add_unexplained_error(outcome.msg)
