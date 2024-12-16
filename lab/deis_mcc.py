@@ -40,5 +40,5 @@ class DEISSlurmEnvironment(SlurmEnvironment):
 
     @classmethod
     def compress_step(cls, lab_experiment, username):
-        return CompressStep(lab_experiment, f'/nfs/home/cs.aau.dk/{username}', '/scratch/{username}/')
+        return CompressStep(lab_experiment, f'/nfs/home/cs.aau.dk/{username}', f'/scratch/{username}/')
 
