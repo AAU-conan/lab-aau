@@ -37,7 +37,7 @@ class DEISSlurmEnvironment(SlurmEnvironment):
     @classmethod
     def is_cluster_genoa(cls):
         node = platform.node()
-        return re.match(r"deis-genoa-\d+", node)
+        return re.match(r"deis-genoa\d+", node)
 
     @classmethod
     def is_cluster(cls):
