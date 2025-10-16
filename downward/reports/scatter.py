@@ -251,9 +251,9 @@ class ScatterPlotReport(PlanningReport):
         for category, coords in categories.items():
             new_coords = []
             for x, y in coords:
-                if x == 0 and isinstance(x, int):
+                if x == 0 and (isinstance(x, int) or isinstance(x, float)):
                     x = 0.1
-                if y == 0 and isinstance(y, int):
+                if y == 0 and (isinstance(y, int) or isinstance(y, float)):
                     y = 0.1
 
                 if (x is not None and x <= 0) or (y is not None and y <= 0):
