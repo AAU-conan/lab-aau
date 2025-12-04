@@ -6,6 +6,10 @@ in the "error" attribute.
 from downward import outcomes
 from lab.parser import Parser
 
+def fix_run_solver_exit_code(content, props):
+    if 'runsolver_planner_exit_code' in props:
+        props['planner_exit_code'] = props['runsolver_planner_exit_code']
+    
 
 def parse_exit_code(content, props):
     """
@@ -55,4 +59,12 @@ class ExitcodeParser(Parser):
             file="driver.log",
             required=True,
         )
+        self.add_pattern(
+                "runsolver_planner_exit_code",
+                r"EXITSTATUS=(.*)\n",
+                type=int,
+                file="values.log",
+                required=False,
+        )
+        self.add_function(fix_run_solver_exit_code)
         self.add_function(parse_exit_code)
