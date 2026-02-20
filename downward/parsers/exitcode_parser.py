@@ -12,8 +12,8 @@ def fix_run_solver_exit_code(content, props):
         if exitcode in [15, 36608]:
             exitcode = 23
         if exitcode in [137]:
-            exitcode = 22 
-        props['planner_exit_code'] = 22
+            exitcode = 22
+        props['planner_exit_code'] = exitcode
     
 
 def parse_exit_code(content, props):
