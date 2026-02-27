@@ -29,13 +29,7 @@ def parse_exit_code(content, props):
     assert "error" not in props
 
     # Check if Fast Downward uses the latest exit codes.
-    use_legacy_exit_codes = True
-    for line in content.splitlines():
-        if line.startswith("translate exit code:") or line.startswith(
-            "search exit code:"
-        ):
-            use_legacy_exit_codes = False
-            break
+    use_legacy_exit_codes = False
 
     exitcode = props["planner_exit_code"]
     outcome = outcomes.get_outcome(exitcode, use_legacy_exit_codes)
