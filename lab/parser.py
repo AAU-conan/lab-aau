@@ -200,4 +200,9 @@ class Parser:
             path = run_dir / function.filename
             # Call function with empty string if file is missing.
             content = get_content(path) or ""
-            function.function(content, props)
+            try:
+                function.function(content, props)
+            except Exception as err:
+                raise RuntimeError(f'Exception occured while trying to parse file {path}') from err
+
+
