@@ -73,7 +73,8 @@ def configure_logging(level=logging.INFO):
     # function is called. We therefore remove all handlers that have
     # been added automatically.
     root_logger = logging.getLogger("")
-    for handler in root_logger.handlers:
+    # Iterate over a copy since removeHandler() mutates the list.
+    for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
     class ErrorAbortHandler(logging.StreamHandler):
@@ -138,7 +139,7 @@ def make_list(value):
         return []
     elif isinstance(value, list):
         return value[:]
-    elif isinstance(value, (tuple, set)):
+    elif isinstance(value, tuple | set):
         return list(value)
     else:
         return [value]
@@ -174,8 +175,8 @@ def remove_path(path):
 
 
 def write_file(filename, content):
-    with open(filename, "w") as f:
-        f.write(content)
+    path = Path(filename)
+    path.write_text(content)
 
 
 def fill_template(template_name, **parameters):
@@ -252,6 +253,9 @@ def compute_log_score(success, value, lower_bound, upper_bound):
     """
     if value is None or not success:
         return 0.0
+    # Handle degenerate interval to avoid division by zero (e.g., lower == upper == 1).
+    if lower_bound == upper_bound:
+        return 1.0 if value <= lower_bound else 0.0
     value = max(value, lower_bound)
     value = min(value, upper_bound)
     raw_score = math.log(value) - math.log(upper_bound)
@@ -272,6 +276,7 @@ class Properties(dict):
         "indent": 2,
         "separators": (",", ": "),
         "sort_keys": True,
+        "allow_nan": True,
     }
 
     """Transparently handle properties files compressed with xz."""
@@ -296,7 +301,7 @@ class Properties(dict):
         open_func = lzma.open if path.suffix == ".xz" else open
         with open_func(path) as f:
             try:
-                self.update(json.load(f))
+                self.update(json.load(f, allow_nan=True))
             except ValueError as e:
                 logging.critical(f"JSON parse error in file '{path}': {e}")
 
@@ -329,7 +334,7 @@ class RunFilter:
         def property_filter(run):
             # We cannot use collections.Iterable here since we don't want
             # membership testing for str.
-            if isinstance(value, (list, tuple, set)):
+            if isinstance(value, list | tuple | set):
                 return run.get(prop) in value
             elif callable(value):
                 logging.critical(f"filter_{prop} doesn't accept functions.")
@@ -344,7 +349,7 @@ class RunFilter:
         # the filter returns True. In this case modified_run is not changed.
         modified_run = run
         result = filter_(modified_run)
-        if not isinstance(result, (dict, bool)):
+        if not isinstance(result, dict | bool):
             logging.critical("Filters must return a dictionary or Boolean")
         # If a dict is returned, use it as the new run, otherwise take the old one.
         if isinstance(result, dict):
@@ -454,7 +459,6 @@ def get_color(fraction, min_wins):
 def get_colors(cells, min_wins):
     result = {col: (0.5, 0.5, 0.5) for col in cells}
     min_value, max_value = get_min_max(cells.values())
-
     if min_value == max_value:
         if min_value is None or None not in cells.values():
             # Either there are no float values in this row or
@@ -474,7 +478,7 @@ def get_colors(cells, min_wins):
 
     for col, val in cells.items():
         if val is not None:
-            fraction = 0 if diff == 0 else (val - min_value) / diff
+            fraction = 0 if diff == 0 or math.isnan(diff) else (val - min_value) / diff
             result[col] = get_color(fraction, min_wins)
     return result
 

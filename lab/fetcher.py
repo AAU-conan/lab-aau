@@ -94,12 +94,12 @@ class Fetcher:
         parameters.
 
         """
+        # Configure logging here so that logging.critical() aborts the program
+        # even when a fetcher is run without constructing an Experiment.
+        tools.configure_logging()
         src_dir = Path(src_dir)
         if not src_dir.exists():
             logging.critical(f"{src_dir} is missing")
-
-        src_props_file = src_dir if src_dir.is_file() else src_dir / "properties"
-        run_filter = tools.RunFilter(filter, **kwargs)
 
         eval_dir = eval_dir or str(src_dir).rstrip("/") + "-eval"
         eval_dir = Path(eval_dir)
@@ -117,8 +117,14 @@ class Fetcher:
             tools.remove_path(eval_dir)
 
         # Load properties in the eval_dir if there are any already.
+        src_props_file = src_dir / "properties"
+        for path in [src_dir / "properties.xz", src_dir]:
+            if not src_props_file.is_file() and path.is_file():
+                src_props_file = path
+                break
         fetch_from_eval_dir = src_props_file.exists()
         combined_props = tools.Properties(eval_dir / "properties")
+        run_filter = tools.RunFilter(filter, **kwargs)
         if fetch_from_eval_dir:
             src_props = tools.Properties(filename=src_props_file)
             if not src_props:

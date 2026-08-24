@@ -179,6 +179,7 @@ class _Buildable:
         name,
         command,
         time_limit=None,
+        wall_time_limit=None,
         memory_limit=None,
         soft_stdout_limit=1024,
         hard_stdout_limit=10 * 1024,
@@ -199,15 +200,20 @@ class _Buildable:
         *command* has to be a list of strings where the first item is
         the executable.
 
-        After *time_limit* seconds the signal SIGXCPU is sent to the
-        command. The process can catch this signal and exit gracefully.
-        If it doesn't catch the SIGXCPU signal, the command is aborted
-        with SIGKILL after five additional seconds. The time spent by a
-        command is the sum of time spent across all threads of the
-        process.
+        After *time_limit* seconds one of SIGXCPU or SIGTERM is sent to
+        the command. The command can catch this signal and exit
+        gracefully. After five additional seconds, the command is
+        aborted with SIGKILL. The time spent by a command is the sum of
+        time spent across all threads of the command is the sum of time
+        spent across all threads of the command and its descendants.
 
-        The command is aborted with SIGKILL when it uses more than
-        *memory_limit* MiB.
+        The *wall_time_limit* parameter specifies the wall-clock time limit in
+        seconds. If not set and *time_limit* is provided, it defaults to
+        max(30, time_limit * 1.5) seconds. If both *time_limit* and
+        *wall_time_limit* are None, no wall-clock time limit is enforced.
+
+        The command is aborted with SIGKILL when any of its threads
+        uses more than *memory_limit* MiB.
 
         You can limit the log size (in KiB) with a soft and hard limit
         for both stdout and stderr. When the soft limit is hit, an
@@ -270,6 +276,7 @@ class _Buildable:
         if "stdin" in kwargs:
             logging.critical("redirecting stdin is not supported")
         kwargs["time_limit"] = time_limit
+        kwargs["wall_time_limit"] = wall_time_limit
         kwargs["memory_limit"] = memory_limit
         kwargs["soft_stdout_limit"] = soft_stdout_limit
         kwargs["hard_stdout_limit"] = hard_stdout_limit
@@ -464,7 +471,13 @@ class Experiment(_Buildable):
             props = tools.Properties(filename=props_path)
             for parser in self.parsers:
                 parser.parse(run_dir, props)
-            props.write()
+            try:
+                props.write()
+            except ValueError as err:
+                logging.critical(
+                    f"Failed to write properties file in {run_dir}: {err}\n"
+                    "Often the solution is to revise a parser."
+                )
 
     def add_fetcher(
         self, src=None, dest=None, merge=None, name=None, filter=None, **kwargs
@@ -732,7 +745,7 @@ class Run(_Buildable):
         run_id = self.properties.get("id")
         if run_id is None:
             logging.critical("Each run must have an id")
-        if not isinstance(run_id, (list, tuple)):
+        if not isinstance(run_id, list | tuple):
             logging.critical(f"id must be a list: {run_id}")
         for id_part in run_id:
             if not isinstance(id_part, str):

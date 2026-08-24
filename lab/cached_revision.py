@@ -10,7 +10,7 @@ from pathlib import Path
 from lab import tools
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _get_id(cmd):
     p = subprocess.run(cmd, stdout=subprocess.PIPE)
     try:
@@ -139,8 +139,12 @@ class CachedRevision:
                             yield tarinfo
 
                 tf.extractall(self._tmp_path, members=members())
-            shutil.move(self._tmp_path / self.subdir, self.path)
+            # Remove the archive before moving the checkout into place. For an
+            # empty subdir, the move would otherwise relocate solver.tgz into
+            # the cached revision dir, where this removal could no longer find
+            # it.
             tools.remove_path(tar_archive)
+            shutil.move(self._tmp_path / self.subdir, self.path)
 
             for exclude_path in self.exclude:
                 path = self.path / exclude_path

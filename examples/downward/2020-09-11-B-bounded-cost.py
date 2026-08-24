@@ -1,8 +1,6 @@
 #! /usr/bin/env python
 
-import json
 import os
-import shutil
 
 import custom_parser
 import project
@@ -15,8 +13,7 @@ from lab.experiment import Experiment
 REPO = project.get_repo_base()
 BENCHMARKS_DIR = os.environ["DOWNWARD_BENCHMARKS"]
 SCP_LOGIN = "myname@myserver.com"
-REMOTE_REPOS_DIR = "/infai/seipp/projects"
-BOUNDS_FILE = "bounds.json"
+REMOTE_REPOS_DIR = "/infai/username/projects"
 SUITE = ["depot:p01.pddl", "grid:prob01.pddl", "gripper:prob01.pddl"]
 REVISION_CACHE = (
     os.environ.get("DOWNWARD_REVISION_CACHE") or project.DIR / "data" / "revision-cache"
@@ -24,14 +21,16 @@ REVISION_CACHE = (
 if project.REMOTE:
     # ENV = project.BaselSlurmEnvironment(email="my.name@myhost.ch")
     ENV = project.TetralithEnvironment(
-        email="first.last@liu.se", extra_options="#SBATCH --account=snic2022-5-341"
+        memory_per_cpu="9G",  # leave some space for the scripts
+        email="first.last@liu.se",
+        extra_options="#SBATCH --account=naiss2024-5-421",
     )
     SUITE = project.SUITE_OPTIMAL_STRIPS
 else:
     ENV = project.LocalEnvironment(processes=2)
 
 CONFIGS = [
-    ("ff", ["--search", "lazy_greedy([ff()], bound=BOUND)"]),
+    ("ff", ["--search", "lazy_greedy([ff()], bound=100)"]),
 ]
 BUILD_OPTIONS = []
 DRIVER_OPTIONS = [
@@ -39,7 +38,7 @@ DRIVER_OPTIONS = [
     "--overall-time-limit",
     "5m",
     "--overall-memory-limit",
-    "3584M",
+    "8G",
 ]
 # Pairs of revision identifier and optional revision nick.
 REV_NICKS = [
@@ -66,22 +65,12 @@ for rev, rev_nick in REV_NICKS:
     for config_nick, config in CONFIGS:
         algo_name = f"{rev_nick}-{config_nick}" if rev_nick else config_nick
 
-        bounds = {}
-        with open(BOUNDS_FILE, "rb") as f:
-            bounds = json.load(f)
         for task in suites.build_suite(BENCHMARKS_DIR, SUITE):
-            upper_bound = bounds[f"{task.domain}:{task.problem}"]
-            if upper_bound is None:
-                upper_bound = "infinity"
-            config_with_bound = config.copy()
-            config_with_bound[-1] = config_with_bound[-1].replace(
-                "bound=BOUND", f"bound={upper_bound}"
-            )
             algo = FastDownwardAlgorithm(
                 algo_name,
                 cached_rev,
                 DRIVER_OPTIONS,
-                config_with_bound,
+                config,
             )
             run = FastDownwardRun(exp, algo, task)
             exp.add_run(run)
@@ -97,14 +86,13 @@ exp.add_step("start", exp.start_runs)
 exp.add_step("parse", exp.parse)
 exp.add_fetcher(name="fetch")
 
-if not project.REMOTE:
-    exp.add_step("remove-eval-dir", shutil.rmtree, exp.eval_dir, ignore_errors=True)
-    project.add_scp_step(exp, SCP_LOGIN, REMOTE_REPOS_DIR)
-
 project.add_absolute_report(
     exp,
     attributes=ATTRIBUTES,
     filter=[project.add_evaluations_per_time, project.group_domains],
 )
+if not project.REMOTE:
+    project.add_scp_step(exp, SCP_LOGIN, REMOTE_REPOS_DIR)
+project.add_compress_exp_dir_step(exp)
 
 exp.run_steps()

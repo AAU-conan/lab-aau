@@ -26,7 +26,6 @@ filesystem (e.g., /tmp/) before running experiments.
 """
 
 import os
-import platform
 import sys
 from pathlib import Path
 
@@ -34,7 +33,7 @@ from singularity_parser import get_parser
 
 from downward import suites
 from downward.reports.absolute import AbsoluteReport
-from lab.environments import BaselSlurmEnvironment, LocalEnvironment
+from lab.environments import LocalEnvironment, TetralithEnvironment
 from lab.experiment import Experiment
 
 
@@ -51,8 +50,7 @@ class BaseReport(AbsoluteReport):
     ]
 
 
-NODE = platform.node()
-RUNNING_ON_CLUSTER = NODE.endswith((".scicore.unibas.ch", ".cluster.bc2.ch"))
+RUNNING_ON_CLUSTER = TetralithEnvironment.is_present()
 DIR = Path(__file__).resolve().parent
 REPO = DIR.parent
 IMAGES_DIR = Path(os.environ["SINGULARITY_IMAGES"])
@@ -61,14 +59,11 @@ BENCHMARKS_DIR = os.environ["DOWNWARD_BENCHMARKS"]
 MEMORY_LIMIT = 3584  # MiB
 if RUNNING_ON_CLUSTER:
     SUITE = ["depot", "freecell", "gripper", "zenotravel"]
-    ENVIRONMENT = BaselSlurmEnvironment(
-        partition="infai_1",
-        email="my.name@unibas.ch",
-        memory_per_cpu="3872M",
+    ENVIRONMENT = TetralithEnvironment(
+        email="my.name@liu.se",
+        memory_per_cpu="9G",
+        extra_options="#SBATCH --account=naiss2024-5-421",
         export=["PATH"],
-        setup=BaselSlurmEnvironment.DEFAULT_SETUP,
-        # Until recently, we had to load the Singularity module here
-        # by adding "module load Singularity/2.6.1 2> /dev/null".
     )
     TIME_LIMIT = 1800
 else:

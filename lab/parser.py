@@ -20,6 +20,7 @@ Parsers are run in the order in which they were added.
 """
 
 import logging
+import os
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -129,7 +130,7 @@ class Parser:
         >>> parser.add_pattern("facts", r"Facts: (\d+)", type=int)
 
         """
-        if type == bool:
+        if type is bool:
             logging.warning(
                 "Casting any non-empty string to boolean will always "
                 "evaluate to true. Are you sure you want to use type=bool?"
@@ -200,9 +201,12 @@ class Parser:
             path = run_dir / function.filename
             # Call function with empty string if file is missing.
             content = get_content(path) or ""
+
+            # Run function in the run directory.
+            old_cwd = Path.cwd()
+            os.chdir(run_dir)
             try:
                 function.function(content, props)
             except Exception as err:
                 raise RuntimeError(f'Exception occured while trying to parse file {path}') from err
-
-
+            os.chdir(old_cwd)

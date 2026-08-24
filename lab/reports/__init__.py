@@ -130,6 +130,9 @@ class Attribute(str):
         self.scale = scale
         self.digits = digits
 
+    def __repr__(self):
+        return f"Attribute({str(self)!r}, min_wins={self.min_wins}, ...)"
+
     def copy(self, name):
         return Attribute(
             name,
@@ -236,7 +239,11 @@ class Report:
         >>> report = Report(filter=rename_algorithms, filter_algorithm=algorithms)
 
         """
-        self.attributes = tools.make_list(attributes)
+        # Turn strings into Attribute objects and set non-default options for some.
+        self.attributes = [
+            self._prepare_attribute(attr) for attr in tools.make_list(attributes)
+        ]
+
         if format not in txt2tags.TARGETS + ["eps", "pdf", "pgf", "png", "py"]:
             raise ValueError(f"invalid format: {format}")
         self.output_format = format
@@ -254,6 +261,9 @@ class Report:
 
         The report will be written to *outfile*.
         """
+        # Configure logging here so that logging.critical() aborts the program
+        # even when a report is generated without constructing an Experiment.
+        tools.configure_logging()
         if not eval_dir.endswith("-eval"):
             logging.info(
                 'The source directory does not end with "-eval". '
@@ -271,9 +281,6 @@ class Report:
         self._load_data()
         self._apply_filter()
         self._scan_data()
-
-        # Turn string attributes into instances of Attribute.
-        self.attributes = [self._prepare_attribute(attr) for attr in self.attributes]
 
         # Expand glob characters.
         self.attributes = self._glob_attributes(self.attributes)
@@ -350,7 +357,7 @@ class Report:
             for key, value in run.items():
                 if key not in self.attributes:
                     continue
-                if isinstance(value, (list, tuple)):
+                if isinstance(value, list | tuple):
                     key = "-".join(str(item) for item in value)
                 row[key] = value
             table.add_row(run_id, row)
@@ -400,16 +407,13 @@ class Report:
         # Attribute is None in all runs.
         return None
 
-    def _get_type_map(self, attributes):
-        return {
-            self._prepare_attribute(attr): self._get_type(attr) for attr in attributes
-        }
-
     def _scan_data(self):
         attributes = set()
         for run in self.props.values():
             attributes |= set(run.keys())
-        self._all_attributes = self._get_type_map(attributes)
+        self._all_attributes = {
+            self._prepare_attribute(attr): self._get_type(attr) for attr in attributes
+        }
 
     def _load_data(self):
         props_file = os.path.join(self.eval_dir, "properties")
@@ -777,7 +781,7 @@ class Table(collections.defaultdict):
         formatter = self.cell_formatters.get(row_name, {}).get(col_name)
         if not formatter:
             align_right = (
-                isinstance(value, (float, int)) or value is None or value == "?"
+                isinstance(value, float | int) or value is None or value == "?"
             )
             value = self._format_value(value)
             formatter = CellFormatter(bold=bold, color=color, align_right=align_right)

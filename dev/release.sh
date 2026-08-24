@@ -25,19 +25,15 @@ fi
 
 if [[ $(git rev-parse --abbrev-ref HEAD) != main ]]; then
     echo "Must be on main branch for release"
+    echo "Run 'jj tug && git checkout main'"
     exit 1
 fi
 
 tox
+./dev/make-release-notes.py "$VERSION" docs/news.rst "$CHANGES"
 
 set_version "$VERSION"
-git commit -am "Update version number to ${VERSION} for release."
-
-# Requirements:
-#   pipx install twine
-#   pip install --user wheel
-python3 setup.py sdist bdist_wheel --universal
-twine upload dist/lab-${VERSION}.tar.gz dist/lab-${VERSION}-py2.py3-none-any.whl
+git commit -am "Update version number to ${VERSION} for release." || true
 
 git tag -a "v$VERSION" -m "v$VERSION" HEAD
 set_version "${VERSION}+"
@@ -46,6 +42,7 @@ git commit -am "Update version number to ${VERSION}+ after release."
 git push
 git push --tags
 
+# PyPI release is created via GitHub Actions on tag push.
+
 # Add changelog to GitHub release.
-./dev/make-release-notes.py "$VERSION" docs/news.rst "$CHANGES"
-hub release create v"$VERSION" --file="$CHANGES"
+gh release create v"$VERSION" --notes-file "$CHANGES"

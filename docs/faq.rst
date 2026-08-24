@@ -34,6 +34,21 @@ started, but you want to rerun them anyway, go to their run directories,
 remove the ``driver.log`` files and then run the "start" experiment step
 again as above.
 
+How can I ignore unexplained errors for which I know the cause?
+---------------------------------------------------------------
+
+You can add a filter to the report (or fetcher) that removes all unexplained
+errors that you actually can explain. Here's an example filter that does so::
+
+    def remove_explained_errors(run):
+        explained_messages = ["out of memory", "MemoryError"]
+        errors = run.get("unexplained_errors")
+        if errors:
+            run["unexplained_errors"] = [
+                error for error in errors
+                if all(msg not in error for msg in explained_messages)]
+        return True
+
 
 I forgot to parse something. How can I run only the parsers again?
 ------------------------------------------------------------------
@@ -42,7 +57,7 @@ Now that parsing is done in its own experiment step, simply consult the `parsing
 documentation <lab.parser.html>`_ for how to amend your parsers and then run the
 "parse" experiment step again with ::
 
-    ./my-exp.py parse
+    uv run my-exp.py parse
 
 
 .. _portparsers:
@@ -62,7 +77,7 @@ what are the benefits of this?
   the parsing time went down from 51 minutes to 5 minutes, both measured on
   cold file system caches).
 * As before, you can let the Slurm environment do the parsing for you and get
-  notified when the report is finished: ``./myexp.py build start parse fetch
+  notified when the report is finished: ``uv run myexp.py build start parse fetch
   report``
 
 To adapt your parsers to this new API, you need to make the following changes:
@@ -131,7 +146,7 @@ or when you want to run the latest Lab development version, you can clone
 the Lab repo and install it (preferable in a virtual environment)::
 
     git clone https://github.com/aibasel/lab.git /path/to/lab
-    pip install --editable /path/to/lab
+    uv pip install --editable /path/to/lab
 
 The ``--editable`` flag installs the project in "editable mode", which
 makes any changes under ``/path/to/lab`` appear immediately in the virtual

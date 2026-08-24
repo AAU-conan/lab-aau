@@ -1,48 +1,10 @@
 import logging
-import re
 from collections import defaultdict
 
 from downward import outcomes
 from downward.reports import PlanningReport
 from lab import reports
-
-
-def _abbreviate_node_names(nodes):
-    """
-    ase05.cluster.bc2.ch -> ase05
-    {ase10, ase11, ase12, ase13, ase14} -> {ase10, ..., ase14}
-    """
-    abbrev_nodes = []
-    sequence_buffer = []
-
-    def flush_buffer():
-        if len(sequence_buffer) <= 2:
-            abbrev_nodes.extend(sequence_buffer)
-        else:
-            abbrev_nodes.extend([sequence_buffer[0], "...", sequence_buffer[-1]])
-        del sequence_buffer[:]
-
-    for node in sorted(nodes):
-        node = node.replace(".cluster.bc2.ch", "")
-        match = re.match(r"ase(\d{2})", node)
-        if match:
-            infai_node_id = int(match.group(1))
-            if sequence_buffer:
-                if sequence_buffer[-1] == f"ase{infai_node_id - 1:02d}":
-                    sequence_buffer.append(node)
-                elif len(sequence_buffer) in [1, 2]:
-                    flush_buffer()
-                    sequence_buffer = [node]
-                else:
-                    flush_buffer()
-                    sequence_buffer = [node]
-            else:
-                sequence_buffer.append(node)
-        else:
-            flush_buffer()
-            abbrev_nodes.append(node)
-    flush_buffer()
-    return abbrev_nodes
+from lab.reports import markup
 
 
 class AbsoluteReport(PlanningReport):
@@ -170,7 +132,17 @@ class AbsoluteReport(PlanningReport):
 
             toc_lines.append(f"- **[''{attribute}'' #{attribute}]**")
             toc_lines.append("  - " + " ".join(toc_line))
-            sections.append((attribute, "\n".join(parts)))
+
+            # Add show/hide all buttons for HTML output
+            section_content = "\n".join(parts)
+            if self.output_format == "html" and len(tables) > 1:
+                buttons = (
+                    f"{markup.ESCAPE_SHOW_ALL_BUTTON}{{{attribute}}} "
+                    f"{markup.ESCAPE_HIDE_ALL_BUTTON}{{{attribute}}}\n\n"
+                )
+                section_content = buttons + section_content
+
+            sections.append((attribute, section_content))
 
         # Add summary before main content. This is done after creating the main content
         # because the summary table is extracted from all other tables.
@@ -191,8 +163,7 @@ class AbsoluteReport(PlanningReport):
                     table.add_cell(algo, attr, info[attr])
         table.set_column_order(self.INFO_ATTRIBUTES)
 
-        used_nodes = ", ".join(_abbreviate_node_names(self._get_node_names()))
-        node_info = f"Used nodes: {{{used_nodes}}}"
+        node_info = f"Used nodes: [{', '.join(sorted(self._get_node_names()))}]"
 
         if table:
             return str(table) + "\n" + node_info

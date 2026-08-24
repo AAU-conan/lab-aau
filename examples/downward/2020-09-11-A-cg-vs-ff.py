@@ -1,7 +1,13 @@
 #! /usr/bin/env python
 
+"""
+This script uses the FastDownwardExperiment class, which makes the script very
+concise, but harder to extend once you go beyond "standard" experiments.
+Therefore, we recommend using the Experiment class directly. See the script in
+examples/downward/2020-09-11-B-bounded-cost.py for an example.
+"""
+
 import os
-import shutil
 
 import custom_parser
 import project
@@ -9,7 +15,7 @@ import project
 REPO = project.get_repo_base()
 BENCHMARKS_DIR = os.environ["DOWNWARD_BENCHMARKS"]
 SCP_LOGIN = "myname@myserver.com"
-REMOTE_REPOS_DIR = "/infai/seipp/projects"
+REMOTE_REPOS_DIR = "/infai/username/projects"
 # If REVISION_CACHE is None, the default "./data/revision-cache/" is used.
 REVISION_CACHE = os.environ.get("DOWNWARD_REVISION_CACHE")
 if project.REMOTE:
@@ -23,8 +29,8 @@ CONFIGS = [
     (f"{index:02d}-{h_nick}", ["--search", f"eager_greedy([{h}])"])
     for index, (h_nick, h) in enumerate(
         [
-            ("cg", "cg(transform=adapt_costs(one))"),
-            ("ff", "ff(transform=adapt_costs(one))"),
+            ("cg", "eval_modify_costs(cg(), cost_type=one)"),
+            ("ff", "eval_modify_costs(ff(), cost_type=one)"),
         ],
         start=1,
     )
@@ -72,13 +78,12 @@ exp.add_step("start", exp.start_runs)
 exp.add_step("parse", exp.parse)
 exp.add_fetcher(name="fetch")
 
-if not project.REMOTE:
-    exp.add_step("remove-eval-dir", shutil.rmtree, exp.eval_dir, ignore_errors=True)
-    project.add_scp_step(exp, SCP_LOGIN, REMOTE_REPOS_DIR)
-
 project.add_absolute_report(
     exp, attributes=ATTRIBUTES, filter=[project.add_evaluations_per_time]
 )
+
+if not project.REMOTE:
+    project.add_scp_step(exp, SCP_LOGIN, REMOTE_REPOS_DIR)
 
 attributes = ["expansions"]
 pairs = [
@@ -98,5 +103,7 @@ for algo1, algo2 in pairs:
             ),
             name=f"{exp.name}-{algo1}-vs-{algo2}-{attr}{suffix}",
         )
+
+project.add_compress_exp_dir_step(exp)
 
 exp.run_steps()

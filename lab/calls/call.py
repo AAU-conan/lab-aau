@@ -1,10 +1,14 @@
+import contextlib
 import errno
 import logging
+import math
 import os
 import resource
 import select
+import signal
 import subprocess
 import sys
+import threading
 import time
 
 
@@ -18,12 +22,94 @@ def set_limit(kind, soft_limit, hard_limit):
         )
 
 
+def get_process_cpu_time(pid):
+    """
+    Get the cumulative CPU time (user + system) for a process.
+    Return None if the process doesn't exist or cannot be accessed.
+    """
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            stat = f.read().split()
+            # Fields 14 and 15 are utime and stime in clock ticks
+            utime = int(stat[13])
+            stime = int(stat[14])
+            # Convert clock ticks to seconds (typically 100 ticks per second)
+            clock_ticks_per_sec = os.sysconf("SC_CLK_TCK")
+            return (utime + stime) / clock_ticks_per_sec
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def get_direct_children(pid):
+    """
+    Get list of direct child PIDs from /proc/{pid}/task/{pid}/children.
+
+    This is much more efficient than scanning all /proc entries.
+    Available since Linux 3.5.
+    """
+    try:
+        # Read the children file which contains space-separated PIDs.
+        with open(f"/proc/{pid}/task/{pid}/children") as f:
+            children = f.read().strip().split()
+            return [int(child) for child in children if child]
+    except (OSError, ValueError):
+        return []
+
+
+def get_process_tree_cpu_time(pid):
+    """
+    Get the cumulative CPU time for a process and all its descendants.
+    """
+    total_cpu_time = 0.0
+
+    # Get CPU time of main process.
+    main_cpu_time = get_process_cpu_time(pid)
+    if main_cpu_time is not None:
+        total_cpu_time += main_cpu_time
+
+    # Recursively get CPU time of direct children.
+    try:
+        for child_pid in get_direct_children(pid):
+            child_cpu_time = get_process_tree_cpu_time(child_pid)
+            total_cpu_time += child_cpu_time
+    except OSError:
+        pass
+
+    return total_cpu_time
+
+
+def get_process_tree_pids_and_times(pid):
+    """
+    Get a dictionary mapping each PID in the process tree to its CPU time.
+    """
+    pid_times = {}
+
+    # Get CPU time of this process.
+    cpu_time = get_process_cpu_time(pid)
+    if cpu_time is not None:
+        pid_times[pid] = cpu_time
+
+    # Recursively get CPU times of children.
+    try:
+        for child_pid in get_direct_children(pid):
+            child_times = get_process_tree_pids_and_times(child_pid)
+            pid_times.update(child_times)
+    except OSError:
+        pass
+
+    return pid_times
+
+
 class Call:
+    # CPU time monitoring check interval in seconds.
+    CPU_TIME_CHECK_INTERVAL = 1.0
+
     def __init__(
         self,
         args,
         name,
         time_limit=None,
+        wall_time_limit=None,
         memory_limit=None,
         soft_stdout_limit=None,
         hard_stdout_limit=None,
@@ -36,18 +122,38 @@ class Call:
         *args* and *kwargs* are passed to `subprocess.Popen
         <http://docs.python.org/library/subprocess.html>`_.
 
+        The *time_limit* parameter enforces CPU time limits in two ways:
+        1. Using RLIMIT_CPU to limit the main process (enforced by the kernel).
+        2. Monitoring the cumulative CPU time of the process and all its child
+           processes, terminating the process tree if the total exceeds the limit.
+
+        The *wall_time_limit* parameter enforces a wall-clock time limit. If not
+        set and *time_limit* is provided, it defaults to
+        max(30, time_limit * 1.5) seconds. If both *time_limit* and
+        *wall_time_limit* are None, no wall-clock time limit is enforced.
+
         See also the documentation for
         ``lab.experiment._Buildable.add_command()``.
 
         """
         assert "stdin" not in kwargs, "redirecting stdin is not supported"
         self.name = name
+        self.cpu_time_limit = time_limit
+        self.cpu_time = None
+        self.wall_clock_start_time = None
+        # Track CPU time per PID to handle sequential children.
+        self.pid_cpu_times = {}  # {pid: last_observed_cpu_time}
+        self.finalized_cpu_time = 0.0  # Accumulated CPU time from terminated processes
 
-        if time_limit is None:
-            self.wall_clock_time_limit = None
-        else:
-            # Enforce miminum on wall-clock limit to account for disk latencies.
+        # Set wall-clock time limit
+        if wall_time_limit is not None:
+            self.wall_clock_time_limit = wall_time_limit
+        elif time_limit is not None:
+            # Default: Enforce minimum on wall-clock limit to account for
+            # disk latencies.
             self.wall_clock_time_limit = max(30, time_limit * 1.5)
+        else:
+            self.wall_clock_time_limit = None
 
         def get_bytes(limit):
             return None if limit is None else int(limit * 1024)
@@ -76,11 +182,14 @@ class Call:
                 kwargs[stream_name] = subprocess.PIPE
 
         def prepare_call():
+            # Create a new process group so we can kill the entire group later
+            os.setpgrp()
             # When the soft time limit is reached, SIGXCPU is emitted. Once we
             # reach the higher hard time limit, SIGKILL is sent. Having some
             # padding between the two limits allows programs to handle SIGXCPU.
             if time_limit is not None:
-                set_limit(resource.RLIMIT_CPU, time_limit, time_limit + 5)
+                cpu_soft_limit = max(1, math.ceil(time_limit))
+                set_limit(resource.RLIMIT_CPU, cpu_soft_limit, cpu_soft_limit + 5)
             if memory_limit is not None:
                 _, hard_mem_limit = resource.getrlimit(resource.RLIMIT_AS)
                 # Convert memory from MiB to Bytes.
@@ -96,6 +205,120 @@ class Call:
                 sys.exit(f'Error: Call {name} failed. "{args[0]}" not found.')
             else:
                 raise
+
+    def _update_cpu_time(self):
+        """
+        Update CPU time tracking by measuring current process tree.
+
+        Tracks each PID individually and accumulates CPU time from terminated
+        processes to handle sequential children correctly.
+
+        Returns the total CPU time or None if measurement fails.
+        """
+        try:
+            # Get current PIDs and their CPU times.
+            current_pids_times = get_process_tree_pids_and_times(self.process.pid)
+
+            # Find PIDs that have terminated since last check.
+            previous_pids = set(self.pid_cpu_times.keys())
+            current_pids = set(current_pids_times.keys())
+            terminated_pids = previous_pids - current_pids
+
+            # Accumulate CPU time from terminated PIDs.
+            for pid in terminated_pids:
+                self.finalized_cpu_time += self.pid_cpu_times[pid]
+
+            # Update tracking with current PIDs.
+            self.pid_cpu_times = current_pids_times
+
+            # Calculate total: finalized + current
+            current_total = sum(current_pids_times.values())
+            total_cpu_time = self.finalized_cpu_time + current_total
+            self.cpu_time = total_cpu_time
+
+            return total_cpu_time
+        except (OSError, AttributeError):
+            return None
+
+    def _terminate_process_group(self):
+        """Terminate the entire process group (parent and all children)."""
+        # Resolve the pgid once: after SIGTERM the leader may exit and be
+        # reaped, making a later os.getpgid(self.process.pid) fail even
+        # though children in the group are still running.
+        try:
+            pgid = os.getpgid(self.process.pid)
+        except (OSError, ProcessLookupError):
+            return
+
+        with contextlib.suppress(OSError, ProcessLookupError):
+            os.killpg(pgid, signal.SIGTERM)
+
+        # Give it a moment to terminate gracefully.
+        time.sleep(1)
+
+        # We can't use self.process.poll() to decide whether to escalate:
+        # poll() only tracks the leader, but a wrapper leader (e.g.
+        # fast-downward.py) can exit cleanly after SIGTERM while its
+        # children (translate, search) keep running in the group. Probing
+        # the group with signal 0 tells us whether any member is still
+        # alive.
+        try:
+            os.killpg(pgid, 0)
+        except (OSError, ProcessLookupError):
+            return
+
+        with contextlib.suppress(OSError, ProcessLookupError):
+            os.killpg(pgid, signal.SIGKILL)
+
+    def _monitor_time_limits(self):
+        """
+        Monitor the CPU time and wall-clock time of the process.
+        Terminate the process if it exceeds either limit.
+        """
+        while self.process.poll() is None:
+            # Check CPU time limit
+            total_cpu_time = self._update_cpu_time()
+
+            if total_cpu_time is None:
+                # Process may have terminated.
+                break
+
+            if self.cpu_time_limit is not None and total_cpu_time > self.cpu_time_limit:
+                logging.info(
+                    f"{self.name} exceeded CPU time limit: "
+                    f"{total_cpu_time:.2f}s > {self.cpu_time_limit}s"
+                )
+                self._terminate_process_group()
+                break
+
+            # Check wall-clock time limit
+            if self.wall_clock_time_limit is not None:
+                assert self.wall_clock_start_time is not None
+                wall_clock_time = time.monotonic() - self.wall_clock_start_time
+                if wall_clock_time > self.wall_clock_time_limit:
+                    logging.info(
+                        f"{self.name} exceeded wall-clock time limit: "
+                        f"{wall_clock_time:.2f}s > {self.wall_clock_time_limit}s"
+                    )
+                    self._terminate_process_group()
+                    break
+
+            time.sleep(self.CPU_TIME_CHECK_INTERVAL)
+
+    def cpu_time_limit_exceeded(self, use_slack=False):
+        """
+        Check if the CPU time limit was exceeded.
+
+        If use_slack is True, add check interval as slack to account for
+        measurement granularity.
+
+        """
+        if self.cpu_time_limit is None or self.cpu_time is None:
+            return False
+        limit = self.cpu_time_limit
+        if use_slack:
+            limit += self.CPU_TIME_CHECK_INTERVAL
+        return self.cpu_time > limit
 
     def _redirect_streams(self):
         """
@@ -187,9 +410,27 @@ class Call:
                     )
 
     def wait(self):
-        wall_clock_start_time = time.time()
+        self.wall_clock_start_time = time.monotonic()
+
+        # Start monitoring thread if any time limit is set.
+        monitor_thread = None
+        if self.cpu_time_limit is not None or self.wall_clock_time_limit is not None:
+            monitor_thread = threading.Thread(
+                target=self._monitor_time_limits, daemon=True
+            )
+            monitor_thread.start()
+
         self._redirect_streams()
         retcode = self.process.wait()
+
+        # Wait for monitor thread to finish
+        if monitor_thread is not None:
+            monitor_thread.join(timeout=1)
+
+            # Do a final CPU time measurement to capture any time accumulated
+            # between the last monitoring check and process termination.
+            self._update_cpu_time()
+
         for stream, _ in self.redirected_streams_and_limits.values():
             # Write output to disk before the next Call starts.
             stream.flush()
@@ -198,15 +439,13 @@ class Call:
         # Close files that were opened in the constructor.
         for file in self.opened_files:
             file.close()
-        wall_clock_time = time.time() - wall_clock_start_time
+
+        wall_clock_time = time.monotonic() - self.wall_clock_start_time
         logging.info(f"{self.name} wall-clock time: {wall_clock_time:.2f}s")
-        if (
-            self.wall_clock_time_limit is not None
-            and wall_clock_time > self.wall_clock_time_limit
-        ):
-            logging.error(
-                f"wall-clock time for {self.name} too high: "
-                f"{wall_clock_time:.2f} > {self.wall_clock_time_limit}"
-            )
+
+        # Report CPU time including children.
+        if self.cpu_time is not None:
+            logging.info(f"{self.name} CPU time: {self.cpu_time:.2f}s")
+
         logging.info(f"{self.name} exit code: {retcode}")
         return retcode

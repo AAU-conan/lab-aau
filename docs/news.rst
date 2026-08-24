@@ -1,16 +1,104 @@
 Changelog
 =========
 
-v8.3 (unreleased)
+v8.10 (2026-06-26)
+------------------
+
+Lab
+^^^
+* Add environment for the NAISS Arrhenius cluster (Damien Van Meerbeeck).
+* Fix process group termination: always escalate to ``SIGKILL`` after ``SIGTERM``, since the previous ``poll()``-based check on the leader missed cases where a wrapper script exited cleanly while its children kept running (Travis Rivera Petit).
+* Configure logging when reports and fetchers run so that ``logging.critical()`` reliably aborts the program even when no experiment is constructed (Jendrik Seipp).
+
+Downward Lab
+^^^^^^^^^^^^
+* Don't leave the temporary ``solver.tgz`` archive behind in cached revision directories (Jendrik Seipp).
+
+
+v8.9 (2026-02-25)
 -----------------
 
 Lab
 ^^^
+* SlurmEnvironment: assign runs randomly to Slurm tasks, instead of assigning sequential blocks of runs to tasks that are then shuffled (Jendrik Seipp).
+
+Downward Lab
+^^^^^^^^^^^^
+* Add buttons for revealing and hiding all tables in an AbsoluteReport section (Jendrik Seipp).
+* Label more ticks in relative scatter plots (Jendrik Seipp).
+
+
+v8.8 (2026-01-17)
+-----------------
+
+Lab
+^^^
+* Kill whole process group instead of only the main process when enforcing CPU and wall-clock time limits (Jendrik Seipp).
+
+v8.7 (2026-01-15)
+-----------------
+
+Lab
+^^^
+* Add ``wall_time_limit`` parameter to ``add_command()`` to allow explicit wall-clock time limits (Jendrik Seipp).
+* Remove tests for Python 3.8 and 3.9. Add tests for Python 3.14 (Jendrik Seipp).
+
+v8.6 (2025-12-03)
+-----------------
+
+Lab
+^^^
+* Limit the sum of CPU time used by all descendants of a command, not only its main process (Jendrik Seipp).
+
+Downward Lab
+^^^^^^^^^^^^
+* Fix computation of scores in single search parser by avoiding division by zero (Jendrik Seipp).
+
+
+v8.5 (2025-09-16)
+-----------------
+
+Lab
+^^^
+* Allow `nan`, `-inf` and `inf` values in properties files (Paul Höft).
+* Revise docs. For example, recommend using `uv` instead of `pip` (Jendrik Seipp).
+
+Downward Lab
+^^^^^^^^^^^^
+* Only list each coordinate once (per category) in pgfplots scatter plots (Paul Höft).
+
+
+v8.4 (2025-02-11)
+-----------------
+
+Lab
+^^^
+* Allow fetching from compressed properties files (Jendrik Seipp).
+* Use absolute paths in Slurm scripts to safeguard against ``.bashrc`` changing directories (Jendrik Seipp).
+* Use 9 GiB memory limit for Slurm jobs on Tetralith by default (Jendrik Seipp).
+* Revise documentation about memory limits (Jendrik Seipp).
+* Remove soft memory limit from Slurm jobs that used to guard against an old problem of the cgroup mechanism failing (Jendrik Seipp).
+* Remove documentation about obsolete ``infai_1`` partition in Basel (Florian Pommerening).
+* Add :meth:`SlurmEnvironment.is_present() <lab.environments.SlurmEnvironment.is_present>` method for testing whether the script is run within a given grid environment (Jendrik Seipp).
+* Raise minimum supported Python version to 3.8 (Jendrik Seipp).
+
+Downward Lab
+^^^^^^^^^^^^
+* Add ``add_compress_exp_dir_step()`` to example Fast Downward experiment (Jendrik Seipp).
+
+
+v8.3 (2024-10-22)
+-----------------
+
+Lab
+^^^
+* Add support for Python 3.12 and 3.13 (Jendrik Seipp).
+* Run parser functions in run directories (Jendrik Seipp).
 * Open ``run.log`` and ``run.err`` in binary mode to avoid decoding byte strings (Jendrik Seipp).
 
 Downward Lab
 ^^^^^^^^^^^^
-* No changes
+* Gracefully handle missing planner exit codes in ``driver.log`` (Jendrik Seipp).
 
 
 v8.2 (2024-05-06)
@@ -39,21 +127,12 @@ Lab
 * Raise an error if a run command calls a Python script directly, because this would bypass the virtual environment (Jendrik Seipp).
 * Make HTML table headers sticky (Jendrik Seipp).
 
-Downward Lab
-^^^^^^^^^^^^
-* None.
-
-
 v8.0 (2023-10-21)
 -----------------
 
 Lab
 ^^^
 * Make parsing a separate experiment step, see :ref:`FAQs <portparsers>` for motivation and upgrade instructions (Jendrik Seipp).
-
-Downward Lab
-^^^^^^^^^^^^
-* None.
 
 
 v7.5 (2023-10-21)
@@ -64,10 +143,6 @@ Lab
 * Provide support for `HTCondor <https://htcondor.org/>`_ clusters in a `third-party repository <https://github.com/Martin1887/lab-htcondor-environment>`_ and add link to docs (Martín Pozo).
 * Add documentation for AI Basel's infai_3 partition (Silvan Sievers).
 * Don't rely on the existence of the 'runs-00001-00100' dir when fetching results (Jendrik Seipp).
-
-Downward Lab
-^^^^^^^^^^^^
-* None.
 
 
 v7.4 (2023-08-18)
@@ -181,10 +256,6 @@ Lab
 * Add ``cpus_per_task`` parameter to ``SlurmEnvironment`` (#98, Lucas Galery Käser).
 * Catch OverflowError when casting large ints to floats (#95, Silvan Sievers).
 
-Downward Lab
-^^^^^^^^^^^^
-* None.
-
 
 v6.3 (2021-02-14)
 -----------------
@@ -246,10 +317,6 @@ Lab
   Please note that the interface to the class is experimental and may change
   in the future. Feedback is welcome!
 * Let tests fail if any example experiment produces unexplained errors.
-
-Downward Lab
-^^^^^^^^^^^^
-* No changes.
 
 
 v5.5 (2020-03-13)

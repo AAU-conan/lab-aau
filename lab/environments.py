@@ -7,6 +7,7 @@ import random
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 from lab import tools
 
@@ -40,7 +41,7 @@ class Environment:
         even though the logs say the runs are finished.
 
         """
-        self.exp = None
+        self.exp = None  # Set by Experiment.
         self.randomize_task_order = randomize_task_order
 
     def _get_task_order(self, num_tasks):
@@ -131,19 +132,19 @@ class SlurmEnvironment(Environment):
     specify a project account (needed on NSC if you're part of multiple
     projects). ::
 
-        extra_options="#SBATCH --nodelist=ase[1-5,7,10]"
-        extra_options="#SBATCH --account=snic2021-5-330"
+        extra_options="#SBATCH --nodelist=ica[1-5,7,10]"
+        extra_options="#SBATCH --account=naiss2024-5-421"
 
 
     *partition* must be a valid Slurm partition name. In Basel you
     can choose from
 
-    * "infai_1": 24 nodes with 16 cores, 64GB memory, 500GB Sata (default)
     * "infai_2": 24 nodes with 20 cores, 128GB memory, 240GB SSD
     * "infai_3": 12 nodes with 128 cores, 512GB memory, 240GB SSD
 
-    *qos* must be a valid Slurm QOS name. In Basel this must be
-    "normal".
+    For Tetralith, omit the argument or use the default "tetralith".
+
+    *qos* must be a valid Slurm QOS name (default: "normal").
 
     *time_limit_per_task* sets the wall-clock time limit for each Slurm task.
     The BaselSlurmEnvironment subclass uses a default of "0", i.e., no limit.
@@ -154,44 +155,21 @@ class SlurmEnvironment(Environment):
 
     *memory_per_cpu* must be a string specifying the memory
     allocated for each core. The string must end with one of the
-    letters K, M or G. The default is "3872M". The value for
-    *memory_per_cpu* should not surpass the amount of memory that is
-    available per core, which is "3872M" for infai_1, "6354M" for
-    infai_2, and "4028M" for infai_3. Processes that surpass the
-    *memory_per_cpu* limit are terminated with SIGKILL. To impose a
-    soft limit that can be caught from within your programs, you can
-    use the ``memory_limit`` kwarg of
+    letters K, M or G. The default is "3872M" for the Basel cluster and
+    "9G" on Tetralith. Processes that surpass the *memory_per_cpu* limit
+    are terminated with SIGKILL. To impose a soft limit that can be caught
+    from within your programs, use the ``memory_limit`` kwarg of
     :py:func:`~lab.experiment.Run.add_command`. Fast Downward users
     should set memory limits via the ``driver_options``.
-
-    Slurm limits the memory with cgroups. Unfortunately, this often
-    fails on our nodes, so we set our own soft memory limit for all
-    Slurm jobs. We derive the soft memory limit by multiplying the
-    value denoted by the *memory_per_cpu* parameter with 0.98 (the
-    Slurm config file contains "AllowedRAMSpace=99" and we add some
-    slack). We use a soft instead of a hard limit so that child
-    processes can raise the limit.
 
     *cpus_per_task* sets the number of cores to be allocated per Slurm
     task (default: 1).
 
-    Examples that reserve the maximum amount of memory available per core:
-
-    >>> env1 = BaselSlurmEnvironment(partition="infai_1", memory_per_cpu="3872M")
-    >>> env2 = BaselSlurmEnvironment(partition="infai_2", memory_per_cpu="6354M")
-    >>> env3 = BaselSlurmEnvironment(partition="infai_3", memory_per_cpu="4028M")
-
-    Example that reserves 12 GiB of memory on infai_1:
-
-    >>> # 12 * 1024 / 3872 = 3.17 -> round to next int -> 4 cores per task
-    >>> # 12G / 4 = 3G per core
-    >>> env = BaselSlurmEnvironment(
-    ...     partition="infai_1",
-    ...     memory_per_cpu="3G",
-    ...     cpus_per_task=4,
-    ... )
-
-    Example that reserves 12 GiB of memory on infai_2:
+    The value for *memory_per_cpu* should not be (much) higher than the
+    amount of memory that is available per core, which is "2840M" for thin
+    Tetralith nodes, "11360M" for fat Tetralith nodes, "6354M" for infai_2
+    and "4028M" for infai_3. If you need more memory, please reserve multiple
+    cores per task. Here is an example that reserves 12 GiB of memory on infai_2:
 
     >>> # 12 * 1024 / 6354 = 1.93 -> round to next int -> 2 cores per task
     >>> # 12G / 2 = 6G per core
@@ -201,14 +179,14 @@ class SlurmEnvironment(Environment):
     ...     cpus_per_task=2,
     ... )
 
-    Example that reserves 12 GiB of memory on infai_3:
+    Here is the code for reserving 128 GiB of memory on fat Tetralith nodes:
 
-    >>> # 12 * 1024 / 4028 = 3.05 -> round to next int -> 4 cores per task
-    >>> # 12G / 4 = 3G per core
-    >>> env = BaselSlurmEnvironment(
-    ...     partition="infai_3",
-    ...     memory_per_cpu="3G",
-    ...     cpus_per_task=4,
+    >>> # 128 * 1024 / 11360 = 11.5 -> round to next int -> 12 cores per task
+    >>> # 128G / 12 = 10.67G -> round to next int -> 11G per core
+    >>> env = TetralithEnvironment(
+    ...     memory_per_cpu="11G",
+    ...     cpus_per_task=12,
+    ...     extra_options="#SBATCH -C fat",
     ... )
 
     Use *export* to specify a list of environment variables that
@@ -226,6 +204,12 @@ class SlurmEnvironment(Environment):
     appropriate value for your cluster in the *MAX_TASKS* class
     variable. Lab groups `ceil(runs/MAX_TASKS)` runs in one array
     task.
+
+    .. note::
+
+        If you use the TetralithEnvironment class and have few and short
+        runs, the grid admins want you to reduce `TetralithEnvironment.MAX_TASKS`
+        from 2000 to a smaller value to avoid producing short-running Slurm tasks.
 
     See :py:class:`~lab.environments.Environment` for inherited
     parameters.
@@ -289,22 +273,10 @@ class SlurmEnvironment(Environment):
         self.export = export
         self.setup = setup
 
-    @staticmethod
-    def _get_memory_in_kb(limit):
-        match = re.match(r"^(\d+)(k|m|g)?$", limit, flags=re.I)
-        if not match:
-            logging.critical(f"malformed memory_per_cpu parameter: {limit}")
-        memory = int(match.group(1))
-        suffix = match.group(2)
-        if suffix is not None:
-            suffix = suffix.lower()
-        if suffix == "k":
-            pass
-        elif suffix is None or suffix == "m":
-            memory *= 1024
-        elif suffix == "g":
-            memory *= 1024 * 1024
-        return memory
+    @classmethod
+    def is_present(cls):
+        """Return True if the environment is present on the current node."""
+        raise NotImplementedError
 
     def start_runs(self):
         # The queue will start the experiment by itself.
@@ -337,11 +309,11 @@ class SlurmEnvironment(Environment):
         logging.info(f"Grouping {num_runs} runs into {num_tasks} Slurm tasks.")
         return tools.fill_template(
             self.RUN_JOB_BODY_TEMPLATE_FILE,
-            exp_path="../" + self.exp.name,
+            exp_path=self.exp.path,
             num_runs=num_runs,
             python=tools.get_python_executable(),
             runs_per_task=self._get_num_runs_per_task(),
-            task_order=" ".join(str(i) for i in self._get_task_order(num_tasks)),
+            run_order=" ".join(str(i) for i in self._get_task_order(num_runs)),
         )
 
     def _get_step_job_body(self, step):
@@ -374,39 +346,36 @@ class SlurmEnvironment(Environment):
         self.exp.build(write_to_disk=False)
 
         # Prepare job dir.
-        job_dir = self.exp.path + "-grid-steps"
-        if os.path.exists(job_dir):
+        self.job_dir = Path(self.exp.path + "-grid-steps")
+        if self.job_dir.exists():
             tools.confirm_or_abort(
-                f'The path "{job_dir}" already exists, so the experiment has '
+                f'The path "{self.job_dir}" already exists, so the experiment has '
                 f"already been submitted. Are you sure you want to "
                 f"delete the grid-steps and submit it again?"
             )
-            tools.remove_path(job_dir)
+            tools.remove_path(self.job_dir)
 
         # Overwrite exp dir if it exists.
         if any(is_build_step(step) for step in steps):
             self.exp._remove_experiment_dir()
 
         # Remove eval dir if it exists.
-        if os.path.exists(self.exp.eval_dir):
+        if Path(self.exp.eval_dir).exists():
             tools.confirm_or_abort(
                 f'The evaluation directory "{self.exp.eval_dir}" already exists. '
                 f"Do you want to remove it?"
             )
             tools.remove_path(self.exp.eval_dir)
 
-        # Create job dir only when we need it.
-        tools.makedirs(job_dir)
+        self.job_dir.mkdir(parents=True, exist_ok=True)
 
         prev_job_id = None
         for step in steps:
             job_name = self._get_job_name(step)
-            job_file = os.path.join(job_dir, job_name)
+            job_file = self.job_dir / job_name
             job_content = self._get_job(step, is_last=(step == steps[-1]))
             tools.write_file(job_file, job_content)
-            prev_job_id = self._submit_job(
-                job_name, job_file, job_dir, dependency=prev_job_id
-            )
+            prev_job_id = self._submit_job(job_file, dependency=prev_job_id)
 
     def _get_job_params(self, step, is_last):
         job_params = {
@@ -420,18 +389,14 @@ class SlurmEnvironment(Environment):
         # Let all tasks write into the same two files. We could use %a
         # (which is replaced by the array ID) to prevent mangled up logs,
         # but we don't want so many files.
-        job_params["logfile"] = "slurm.log"
-        job_params["errfile"] = "slurm.err"
+        job_params["logfile"] = self.job_dir / "slurm.log"
+        job_params["errfile"] = self.job_dir / "slurm.err"
 
         job_params["partition"] = self.partition
         job_params["qos"] = self.qos
         job_params["time_limit_per_task"] = self.time_limit_per_task
         job_params["memory_per_cpu"] = self.memory_per_cpu
         job_params["cpus_per_task"] = self.cpus_per_task
-        memory_per_cpu_kb = SlurmEnvironment._get_memory_in_kb(self.memory_per_cpu)
-        job_params["soft_memory_limit"] = int(
-            self.cpus_per_task * memory_per_cpu_kb * 0.98
-        )
         job_params["nice"] = self.NICE_VALUE if is_run_step(step) else 0
         job_params["environment_setup"] = self.setup
 
@@ -444,15 +409,15 @@ class SlurmEnvironment(Environment):
 
         return job_params
 
-    def _submit_job(self, job_name, job_file, job_dir, dependency=None):
+    def _submit_job(self, job_file, dependency=None):
         submit = ["sbatch"]
         if self.export:
             submit += ["--export", ",".join(self.export)]
         if dependency:
             submit.extend(["-d", "afterany:" + dependency, "--kill-on-invalid-dep=yes"])
-        submit.append(job_file)
+        submit.append(str(job_file))
         logging.info(f"Executing {' '.join(submit)}")
-        out = subprocess.check_output(submit, cwd=job_dir).decode()
+        out = subprocess.check_output(submit, cwd=self.job_dir).decode()
         logging.info(f"Output: {out.strip()}")
         match = re.match(r"Submitted batch job (\d*)", out)
         assert match, f"Submitting job with sbatch failed: '{out}'"
@@ -462,14 +427,19 @@ class SlurmEnvironment(Environment):
 class BaselSlurmEnvironment(SlurmEnvironment):
     """Environment for Basel's AI group."""
 
-    DEFAULT_PARTITION = "infai_1"
-    DEFAULT_QOS = "normal"
-    # infai_1 nodes have 61964 MiB and 16 cores => 3872.75 MiB per core
+    DEFAULT_PARTITION = "infai_2"
+    DEFAULT_QOS = "infai"
+    # infai_2 nodes have 77440 MiB and 20 cores => 3872 MiB per core
     # (see http://issues.fast-downward.org/issue733).
     DEFAULT_MEMORY_PER_CPU = "3872M"
     MAX_TASKS = 150000 - 1  # see slurm.conf
     # Prioritize jobs from Autonice users on Basel grid.
     NICE_VALUE = 5000
+
+    @classmethod
+    def is_present(cls):
+        node = platform.node()
+        return bool(re.fullmatch(r"login12|ic[ab]\d\d", node))
 
 
 class TetralithEnvironment(SlurmEnvironment):
@@ -485,15 +455,30 @@ class TetralithEnvironment(SlurmEnvironment):
     # memory and 64 nodes have 384 GB of memory. All nodes have 32 cores.
     # So for the vast majority of nodes, we have 2979 MiB per core. The
     # slurm.conf file sets DefMemPerCPU=2904. Since this is rather low, we
-    # use the default value from the BaselSlurmEnvironment. This also
-    # allows us to keep the default memory limit in the
-    # FastDownwardExperiment class.
-    DEFAULT_MEMORY_PER_CPU = "3872M"
+    # simply set our own default: 8 GiB for the solver and 1 GiB for scripts.
+    DEFAULT_MEMORY_PER_CPU = "9G"
     # See slurm.conf
     MAX_TASKS = 2000
 
     @classmethod
     def is_present(cls):
         node = platform.node()
-        return re.match(r"tetralith\d+\.nsc\.liu\.se|n\d+", node)
+        return bool(re.match(r"tetralith\d+\.nsc\.liu\.se|n\d+", node))
+
+
+class ArrheniusEnvironment(SlurmEnvironment):
+    """Environment for the NAISS Arrhenius cluster."""
+
+    DEFAULT_PARTITION = "cpu"
+    DEFAULT_QOS = "normal"
+    # cpu nodes have 773500 MiB and 256 cores => ~3021 MiB per core.
+    DEFAULT_MEMORY_PER_CPU = "3G"
+    DEFAULT_TIME_LIMIT_PER_TASK = "24:00:00"
+    # MaxArraySize = 1001 (from slurm.conf)
+    MAX_TASKS = 1000
+
+    @classmethod
+    def is_present(cls):
+        node = platform.node()
+        return bool(re.match(r"arrhenius\d+\.hpc\.arrhenius\.naiss\.se|n\d+", node))
 
