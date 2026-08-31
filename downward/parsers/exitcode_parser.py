@@ -5,15 +5,12 @@ in the "error" attribute.
 
 from downward import outcomes
 from lab.parser import Parser
+import os
 
 def fix_run_solver_exit_code(content, props):
     if 'runsolver_planner_exit_code' in props:
-        exitcode = props['runsolver_planner_exit_code']
-        if exitcode in [15, 36608]:
-            exitcode = 23
-        if exitcode in [137]:
-            exitcode = 22
-        props['planner_exit_code'] = exitcode
+        waitstatus = props['runsolver_planner_exit_code']
+        props['planner_exit_code'] = os.waitstatus_to_exitcode(waitstatus)
     
 
 def parse_exit_code(content, props):

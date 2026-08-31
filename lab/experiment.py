@@ -73,6 +73,7 @@ def _check_name(name, typ, extra_chars=""):
         logging.critical(
             f"Name for {typ} may only use characters from"
             f" [A-Z], [a-z], [0-9], [{extra_chars}]: {name}"
+            f" contains {[c for c in alpha_num_name if not c.isalnum()]}"
         )
 
 
