@@ -35,13 +35,13 @@ class DEISSlurmEnvironment(SlurmEnvironment):
         return re.match(r"compute\d+", node)
 
     @classmethod
-    def is_cluster_genoa(cls):
+    def is_cluster_deis(cls):
         node = platform.node()
-        return re.match(r"deis-genoa\d+", node)
+        return re.match(r"deis-.*", node)
 
     @classmethod
     def is_cluster(cls):
-        return cls.is_cluster_main() or cls.is_cluster_dhabi() or cls.is_cluster_naples() or cls.is_cluster_rome() or cls.is_cluster_genoa()
+        return cls.is_cluster_main() or cls.is_cluster_dhabi() or cls.is_cluster_naples() or cls.is_cluster_rome() or cls.is_cluster_deis()
 
     @classmethod
     def compress_step(cls, lab_experiment, username):
