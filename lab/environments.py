@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import lab.experiment
 from lab import tools
 
 
@@ -361,10 +362,11 @@ class SlurmEnvironment(Environment):
 
         # Remove eval dir if it exists.
         if Path(self.exp.eval_dir).exists():
-            tools.confirm_or_abort(
-                f'The evaluation directory "{self.exp.eval_dir}" already exists. '
-                f"Do you want to remove it?"
-            )
+            if not lab.experiment.overwrite_files:
+                tools.confirm_or_abort(
+                    f'The evaluation directory "{self.exp.eval_dir}" already exists. '
+                    f"Do you want to remove it?"
+                )
             tools.remove_path(self.exp.eval_dir)
 
         self.job_dir.mkdir(parents=True, exist_ok=True)

@@ -29,6 +29,8 @@ steps_group.add_argument(
 steps_group.add_argument(
     "--all", dest="run_all_steps", action="store_true", help="Run all steps."
 )
+ARGPARSER.add_argument('--overwrite', action='store_true', help="Overwrite existing files")
+overwrite_files = False
 
 STATIC_EXPERIMENT_PROPERTIES_FILENAME = "static-experiment-properties"
 STATIC_RUN_PROPERTIES_FILENAME = "static-properties"
@@ -578,6 +580,8 @@ class Experiment(_Buildable):
         if not args.steps and not args.run_all_steps:
             ARGPARSER.print_help()
             return
+        global overwrite_files
+        overwrite_files = args.overwrite
         # Run all steps if --all is passed.
         steps = [get_step(self.steps, name) for name in args.steps] or self.steps
         # Use LocalEnvironment if the main experiment step is inactive.
@@ -589,7 +593,8 @@ class Experiment(_Buildable):
 
     def _remove_experiment_dir(self):
         if os.path.exists(self.path):
-            tools.confirm_overwrite_or_abort(self.path)
+            if not overwrite_files:
+                tools.confirm_overwrite_or_abort(self.path)
             tools.remove_path(self.path)
 
     def build(self, write_to_disk=True):

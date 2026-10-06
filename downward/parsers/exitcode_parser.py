@@ -10,8 +10,16 @@ import os
 def fix_run_solver_exit_code(content, props):
     if 'runsolver_planner_exit_code' in props:
         waitstatus = props['runsolver_planner_exit_code']
-        props['planner_exit_code'] = os.waitstatus_to_exitcode(waitstatus)
-    
+        if os.WIFEXITED(waitstatus):
+            print(f'Converting {waitstatus} to {os.waitstatus_to_exitcode(waitstatus)}')
+            props['planner_exit_code'] = os.waitstatus_to_exitcode(waitstatus)
+        elif os.WIFSIGNALED(waitstatus):
+            print(f'Converting {waitstatus} to {256 - waitstatus}')
+            props['planner_exit_code'] = 256 - waitstatus
+        else:
+            props['planner_exit_code'] = waitstatus
+
+
 
 def parse_exit_code(content, props):
     """
@@ -41,6 +49,9 @@ def parse_exit_code(content, props):
             outcome.msg in ["translate-unsolvable", "search-unsolvable"]
             or "Completely explored state space -- no solution" in content
         )
+    if (outcome.value == outcomes.get_exit_code(15) or outcome.value == 143) and (props['runsolver_timeout'] or props['runsolver_memout']):
+        outcome = outcomes.Outcome(outcome.value, outcome.msg, True, outcome.min_wins)
+
     if not outcome.explained:
         props.add_unexplained_error(outcome.msg)
 
@@ -59,6 +70,20 @@ class ExitcodeParser(Parser):
                 "runsolver_planner_exit_code",
                 r"EXITSTATUS=(.*)\n",
                 type=int,
+                file="values.log",
+                required=False,
+        )
+        self.add_pattern(
+                "runsolver_timeout",
+                r"TIMEOUT=(true|false)\n",
+                type=lambda x: x == "true",
+                file="values.log",
+                required=False,
+        )
+        self.add_pattern(
+                "runsolver_memout",
+                r"MEMOUT=(true|false)\n",
+                type=lambda x: x == "true",
                 file="values.log",
                 required=False,
         )

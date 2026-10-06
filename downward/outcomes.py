@@ -56,6 +56,8 @@ NEW_OUTCOMES = [
     Outcome(37, "driver-unsupported", explained=False, min_wins=True),
     Outcome(get_exit_code(signal.SIGKILL), "sigkill", explained=False, min_wins=True),
     Outcome(get_exit_code(signal.SIGSEGV), "segfault", explained=False, min_wins=True),
+    Outcome(get_exit_code(signal.SIGTERM), "segterm", explained=False, min_wins=True),
+    Outcome(get_exit_code(143), "container-sigterm", explained=False, min_wins=True),
 ]
 
 EXITCODE_TO_OUTCOME = {outcome.value: outcome for outcome in NEW_OUTCOMES}
@@ -63,7 +65,7 @@ EXITCODE_TO_OUTCOME = {outcome.value: outcome for outcome in NEW_OUTCOMES}
 OUTCOMES = LEGACY_OUTCOMES + NEW_OUTCOMES
 
 
-def get_outcome(exitcode, use_legacy_exit_codes):
+def get_outcome(exitcode, use_legacy_exit_codes) -> Outcome:
     if use_legacy_exit_codes and exitcode in EXITCODE_TO_LEGACY_OUTCOME:
         return EXITCODE_TO_LEGACY_OUTCOME[exitcode]
     elif not use_legacy_exit_codes and exitcode in EXITCODE_TO_OUTCOME:

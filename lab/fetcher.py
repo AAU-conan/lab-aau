@@ -8,15 +8,18 @@ from lab import tools
 
 def _check_eval_dir(eval_dir: Path):
     if eval_dir.exists():
-        answer = (
-            input(
-                f"{tools.get_relative_path(eval_dir)} already exists. "
-                f"Do you want to (o)verwrite it, "
-                f"(m)erge the results, or (c)ancel? "
+        if not lab.experiment.overwrite_files:
+            answer = (
+                input(
+                    f"{tools.get_relative_path(eval_dir)} already exists. "
+                    f"Do you want to (o)verwrite it, "
+                    f"(m)erge the results, or (c)ancel? "
+                )
+                .strip()
+                .lower()
             )
-            .strip()
-            .lower()
-        )
+        else:
+            answer = "o"
         if answer == "o":
             tools.remove_path(eval_dir)
         elif answer == "m":
