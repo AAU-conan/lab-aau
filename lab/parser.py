@@ -177,18 +177,19 @@ class Parser:
 
         content_cache = {}
 
-        def get_content(path):
-            if path not in content_cache:
-                try:
-                    content_cache[path] = path.read_text()
-                except FileNotFoundError:
-                    content_cache[path] = None
-            return content_cache[path]
+        def get_content(filename: str):
+            if filename not in content_cache:
+                files = list(run_dir.glob(filename))
+                if len(files) > 0:
+                    content_cache[filename] = '\n'.join(p.read_text() for p in files)
+                else:
+                    content_cache[filename] = None
+            return content_cache[filename]
 
         for filename, file_parser in self.file_parsers.items():
             # If filename is absolute, path is set to filename.
+            content = get_content(filename)
             path = run_dir / filename
-            content = get_content(path)
             if content is None:
                 if any(pattern.required for pattern in file_parser.patterns):
                     tools.add_unexplained_error(
@@ -198,9 +199,8 @@ class Parser:
                 file_parser.search_patterns(str(path), content, props)
 
         for function in self.functions:
-            path = run_dir / function.filename
             # Call function with empty string if file is missing.
-            content = get_content(path) or ""
+            content = get_content(function.filename) or ""
 
             # Run function in the run directory.
             old_cwd = Path.cwd()

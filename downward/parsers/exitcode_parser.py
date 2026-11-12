@@ -11,10 +11,10 @@ def fix_run_solver_exit_code(content, props):
     if 'runsolver_planner_exit_code' in props:
         waitstatus = props['runsolver_planner_exit_code']
         if os.WIFEXITED(waitstatus):
-            print(f'Converting {waitstatus} to {os.waitstatus_to_exitcode(waitstatus)}')
+            # print(f'Converting {waitstatus} to {os.waitstatus_to_exitcode(waitstatus)}')
             props['planner_exit_code'] = os.waitstatus_to_exitcode(waitstatus)
         elif os.WIFSIGNALED(waitstatus):
-            print(f'Converting {waitstatus} to {256 - waitstatus}')
+            # print(f'Converting {waitstatus} to {256 - waitstatus}')
             props['planner_exit_code'] = 256 - waitstatus
         else:
             props['planner_exit_code'] = waitstatus
